@@ -16,9 +16,7 @@ class PackageServiceProvider extends ServiceProvider
         $this->publishes([
             __DIR__.'/Setup/database/migrations/2024_08_14_175333_create_stores_table.php' => database_path('migrations/2024_08_14_175333_create_stores_table.php'),
         ],'config');
-        $this->publishes([
-            __DIR__.'/Setup/routes/shopify.php' => app_path('routes/shopify.php'),
-        ],'config');
+        $this->loadRoutesFrom(__DIR__.'/Setup/routes/shopify.php');
     }
 
     public function register()
