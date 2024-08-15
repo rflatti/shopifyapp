@@ -1,0 +1,35 @@
+{
+    "name": "rflatti/shopifyapp",
+    "description": "A Shopify app integration with Laravel.",
+    "type": "library",
+    "require": {
+        "php": "^8.2",
+        "guzzlehttp/guzzle": "^7.9"
+    },
+    "autoload": {
+        "psr-4": {
+            "RFlatti\\ShopifyApp\\": "/"
+        }
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "RFlatti\\ShopifyApp\\PackageServiceProvider"
+            ]
+        }
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^10.0"
+    },
+    "scripts": {
+        "test": "vendor/bin/phpunit"
+    },
+    "minimum-stability": "stable",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "Raphael Flattinger",
+            "email": "raphael.flattinger@mstage.at"
+        }
+    ]
+}
