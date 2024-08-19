@@ -4,8 +4,10 @@ namespace RFlatti\ShopifyApp\Controllers;
 
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Redirect;
+use RFlatti\ShopifyApp\Services\StorageService;
 use RFlatti\ShopifyApp\Models\Store;
 use RFlatti\ShopifyApp\Traits\FunctionTrait;
 use RFlatti\ShopifyApp\Traits\RequestTrait;
@@ -14,17 +16,20 @@ class InstallationController extends Controller
 {
     use FunctionTrait, RequestTrait;
 
+    public function __construct(
+        protected StorageService $storageService
+    ){}
 
     public function startInstallation(Request $request){
-        Log::info('AUFRUF EINGELOGGT');
         try {
             if($this->validateRequestFromShopify($request->all())){
                 if($request->has('shop')){
                     $storeDetails = $this->getStoreByDomain($request->shop);
                     if($storeDetails !== null && $storeDetails !== false){
                         if($this->checkIfAccessTokenIsValid($storeDetails)){
-                            //access token is valid
-                            return view('welcome');
+                            //make it easier to handle the rest of the shopify app ...
+                            $this->storageService->addId($storeDetails['id']);
+                            return response($this->executeAfterClass($storeDetails, $request));
                         } else {
                             //redirect user to the re-installation process
                             Log::info('Re installation for shop: '.$request->shop);
@@ -60,7 +65,6 @@ class InstallationController extends Controller
     public function handleRedirect(Request $request){
         try{
             if($this->validateRequestFromShopify($request->all())){
-                Log::info(json_encode($request->all()));
                 if($request->has('shop') && $request->has('code')){
                     $shop = $request->shop;
                     $code = $request->code;
@@ -72,12 +76,6 @@ class InstallationController extends Controller
                         if($saveDetails){
                             //Installation process is completed
                             $storePath = explode('.', $shopDetails['myshopify_domain'])[0];
-                            Log::info("SHOP DETAILS");
-                            Log::info(json_encode($shopDetails));
-                            Log::info('STOR_PATH');
-                            Log::info($storePath);
-                            Log::info('REDIRECT URL');
-                            Log::info("https://admin.shopify.com/store$storePath/apps/".config('shopify.handle'));
                             return Redirect::to("https://admin.shopify.com/store/$storePath/apps/".config('shopify.handle'));
                         } else {
                             Log::info('Error saving shop details');
@@ -142,8 +140,7 @@ class InstallationController extends Controller
                 $endpoint = $this->getShopifyURLForStore('shop.json', $storeDetails);
                 $headers = $this->getShopifyHeadersForStore($storeDetails);
                 $response = $this->makeAnAPICallToShopify('GET', $endpoint, null, $headers, null);
-                Log::info('Response for checking validity of token');
-                Log::info($response);
+
                 return $response['statusCode'] === 200;
             }
             return false;
@@ -156,15 +153,12 @@ class InstallationController extends Controller
         try{
             $endpoint = "https://$shop/admin/oauth/access_token";
             $headers = $this->getShopifyHeadersForStore(['Content-Type' => 'application/json']);
-            Log::info('ACCESS_TOKEN REQUEST BODY:');
             $requestBody = [
                 'client_id' => config('shopify.shopify_api_key'),
                 'client_secret' => config('shopify.shopify_api_secret'),
                 'code' => $code,
             ];
-            Log::info(json_encode($requestBody));
             $response = $this->makeAnAPICallToShopify('POST', $endpoint, null, $headers, $requestBody);
-            Log::info('Response log getting access token: '. json_encode($response));
             if($response['statusCode'] == 200){
                 $body = $response['body'];
                 if(!is_array($body)) $body = json_decode($body, true);
@@ -226,10 +220,6 @@ class InstallationController extends Controller
     }
 
     private function getShopifyURLForStore($endpoint, $store, $apiVersion = '2023-10'){
-        Log::info("retrived store");
-        Log::info(json_encode($store));
-
-        $store_domain = "";
 
         if(isset($store->myshopify_domain)){
             $store_domain = $store->myshopify_domain;
@@ -239,6 +229,76 @@ class InstallationController extends Controller
 
         return 'https://'.$store_domain.'/admin/api/'.config('shopify.shopify_api_version').'/'.$endpoint;
     }
+
+    /*
+     * Add class for further way
+     */
+
+    private function executeAfterClass($storeDetails, $request)
+    {
+
+        $className = Config::get('shopify.access_token_valid_controller.class');
+
+        // Check if class exists
+        if (class_exists($className)) {
+            $reflectionClass = new \ReflectionClass($className);
+
+            $constructor = $reflectionClass->getConstructor();
+            $dependencies = [];
+
+            if ($constructor) {
+                foreach ($constructor->getParameters() as $parameter) {
+                    $dependencyClass = $parameter->getClass();
+
+                    if ($dependencyClass) {
+                        $dependencies[] = $this->resolveDependency($dependencyClass->name);
+                    } else {
+                        $dependencies[] = null;
+                    }
+                }
+            }
+
+            $afterClassInstance = $reflectionClass->newInstanceArgs($dependencies);
+
+            if (method_exists($afterClassInstance, 'execute')) {
+                return $afterClassInstance->execute($storeDetails, $request);
+            }
+        } else {
+            throw new \Exception("Class $className does not exist.");
+        }
+    }
+
+
+    /**
+     * @throws \ReflectionException
+     */
+    private function resolveDependency(string $className)
+    {
+
+        //load class dependencies to make constructor working for plugins
+        $reflectionClass = new \ReflectionClass($className);
+        $constructor = $reflectionClass->getConstructor();
+
+        if (is_null($constructor)) {
+            return new $className;
+        }
+
+        $dependencies = [];
+        foreach ($constructor->getParameters() as $parameter) {
+            $dependencyClass = $parameter->getClass();
+
+            if ($dependencyClass) {
+                //load dependencies
+                $dependencies[] = $this->resolveDependency($dependencyClass->name);
+            } else {
+                //no dependencies to load
+                $dependencies[] = $parameter->isOptional() ? $parameter->getDefaultValue() : null;
+            }
+        }
+
+        return $reflectionClass->newInstanceArgs($dependencies);
+    }
+
 
 
 }
