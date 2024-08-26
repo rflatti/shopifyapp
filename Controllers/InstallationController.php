@@ -29,7 +29,7 @@ class InstallationController extends Controller
                         if($this->checkIfAccessTokenIsValid($storeDetails)){
                             //make it easier to handle the rest of the shopify app ...
                             $this->storageService->addId($storeDetails['id']);
-                            return response($this->executeAfterClass($storeDetails, $request));
+                            return $this->executeAfterClass($storeDetails, $request);
                         } else {
                             //redirect user to the re-installation process
                             Log::info('Re installation for shop: '.$request->shop);
